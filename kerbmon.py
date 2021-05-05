@@ -1,10 +1,15 @@
 #!/usr/bin/env python
-
+#
 # Author:
 #  @__Retrospect
 #
 # Description:
-#    This module will implement finding Service Principal Names in a continuous way
+#    This module will implement finding Service Principal Names in a continuous way. It will monitor multiple domains looking for recently changed passwords of the sAMAccount of the SPN's, or newly added SPN's to the domain.
+#
+# Credits:
+#     Tim Medin (@timmedin): For the research of the kerberoast attack detailed at: https://files.sans.org/summit/hackfest2014/PDFs/Kicking%20the%20Guard%20Dog%20of%20Hades%20-%20Attacking%20Microsoft%20Kerberos%20%20-%20Tim%20Medin(1).pdf
+#     Alberto Solino (@agsolino): For building a kerberoast module based on the impacket framework. This script is heavily based on his work on GetUserSPNs.py
+#     @skelsec: For his initial https://github.com/skelsec/PyKerberoast project
 
 import argparse
 import sys
@@ -25,12 +30,12 @@ class Database:
     def create_database(self):
         self.connect_database()
 
-        sql_spn_table = """ CREATE TABLE IF NOT EXISTS spn_table (
+        sql_spn_table = """ CREATE TABLE IF NOT EXISTS spn (
                                         id integer PRIMARY KEY AUTOINCREMENT,
                                         domain text NOT NULL,
                                         servicePrincipalName text NOT NULL,
                                         sAMAccountName text NOT NULL,
-                                        pwdLastSet date NOT NULL
+                                        pwdLastSet text NOT NULL
                                     ); """
 
         if self.cursor is not None:
@@ -50,6 +55,27 @@ class Database:
         except Error as e:
             print(e)
 
+    def find_spn(self, domain, spn, samaccountname, pwdlastset):
+        results=[]
+
+        cursor = self.cursor
+        spnQuery = 'SELECT pwdLastSet FROM spn WHERE servicePrincipalName={spnValue}'.format(spnValue=spn)
+        spnResult = cursor.execute(spnuery).fetchall()
+
+        if len(spnResult) is 0:
+            cursor.execute("INSERT INTO spn (domain, servicePrincipalName, sAMAccountName, pwdLastSet) VALUES (?,?,?,?)", (domain, spn, samaccountname, pwdlastset))
+            results.append("NEW SPN! domain: "+domain+" spn: "+ spn " samaccountname "+ samaccountname + " pwdlastset: " + pwdlastset)
+        else if len(spnResult) is 1:
+            if pwdlastset is not spnResult[0]:
+                cursor.execute("UPDATE spn SET pwdLastSet=? WHERE servicePrincipalName=?",(pwdlastset, spn))
+                results.append("CHANGED PW! domain: "+domain+" spn: "+ spn " samaccountname "+ samaccountname + " pwdlastset: " + pwdlastset)
+        else:
+            print("huh, more than 1 database match, something wrong here:")
+            print("domain: "+domain+" spn: "+ spn " samaccountname "+ samaccountname + " pwdlastset: " + pwdlastset)
+            raise
+
+        self.commit()
+        return results
 
 def harvester(authDomain, username, password, targetDomain):
     target = targetDomain
@@ -194,9 +220,13 @@ if __name__ == "__main__":
             for targetDomain in domains:
                 print(" ** Starting enumerating domain: "+targetDomain)
                 # dict format:
-                # [?]
+                # [[spn, sAMAccountName, memberOf, pwdLastSet, lastLogon, delegation],...]
                 domainAnswers = harvester(authDomain, username, password, targetDomain)
                 print(domainAnswers)
+
+                for spn in domainAnswers:
+                    db.find_spn(targetDomain, spn[0], spn[1], spn[3])
+
                 print(" ** Finished enumerating domain: "+targetDomain)
 
 #            executer = GetUserSPNs(username, password, userDomain, domain, option)
