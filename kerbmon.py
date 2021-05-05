@@ -64,11 +64,11 @@ class Database:
 
         if len(spnResult) is 0:
             cursor.execute("INSERT INTO spn (domain, servicePrincipalName, sAMAccountName, pwdLastSet) VALUES (?,?,?,?)", (domain, spn, samaccountname, pwdlastset))
-            results.append("NEW SPN! domain: "+domain+" spn: "+ spn " samaccountname "+ samaccountname + " pwdlastset: " + pwdlastset)
+            results.append("NEW SPN! domain: " + domain + " spn: " + spn + " samaccountname " + samaccountname + " pwdlastset: " + pwdlastset)
         else if len(spnResult) is 1:
             if pwdlastset is not spnResult[0]:
                 cursor.execute("UPDATE spn SET pwdLastSet=? WHERE servicePrincipalName=?",(pwdlastset, spn))
-                results.append("CHANGED PW! domain: "+domain+" spn: "+ spn " samaccountname "+ samaccountname + " pwdlastset: " + pwdlastset)
+                results.append("CHANGED PW! domain: " + domain + " spn: " + spn + " samaccountname " + samaccountname + " pwdlastset: " + pwdlastset)
         else:
             print("huh, more than 1 database match, something wrong here:")
             print("domain: "+domain+" spn: "+ spn " samaccountname "+ samaccountname + " pwdlastset: " + pwdlastset)
