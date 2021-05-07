@@ -1,8 +1,6 @@
 testdb
 dbfile
-out
-outfile
 info.log
 debug.log
-outputfile*
 __pycache__/*
+out*
