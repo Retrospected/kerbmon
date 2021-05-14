@@ -1,6 +1,7 @@
 testdb
 dbfile
 info.log
-debug.log
+debug*log
 __pycache__/*
 out*
+rockyou.txt

