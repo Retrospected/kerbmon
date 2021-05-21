@@ -1,8 +1,5 @@
-testdb
-dbfile
-info.log
-debug*log
+*.db
+*.log
 __pycache__/*
-out*
-rockyou.txt
 old/*
+dict/*

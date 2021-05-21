@@ -483,7 +483,7 @@ if __name__ == "__main__":
         logging.info("With username: "+username)
         logging.info("Loading domains from file: "+options.domainsfile)
         logging.info("Storing state in: "+options.dbfile)
-        options.outputfile = options.outputfile + "_" + datetime.now().strftime('%Y-%m-%d_%H-%M')
+        options.outputfile = options.outputfile + "_" + datetime.now().strftime('%Y-%m-%d_%H-%M') + ".log"
 
         logging.info("Outputting results in: "+options.outputfile)
 
