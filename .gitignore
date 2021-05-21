@@ -5,3 +5,4 @@ debug*log
 __pycache__/*
 out*
 rockyou.txt
+old/*

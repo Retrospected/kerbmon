@@ -49,7 +49,7 @@ class Database:
                                         domain text NOT NULL,
                                         servicePrincipalName text NOT NULL,
                                         sAMAccountName text NOT NULL,
-                                        pwdLastSet text NOT NULL
+                                        pwdLastSetDate text NOT NULL
                                     ); """
 
         if self.cursor is not None:
@@ -70,26 +70,28 @@ class Database:
             logging.info(e)
 
     def find_spn(self, domain, spn, samaccountname, pwdlastset):
+        pwdlastsetDate = pwdlastset.split(' ')[0]
+
         results=[]
 
         cursor = self.cursor
-        spnQuery = 'SELECT pwdLastSet FROM spn WHERE servicePrincipalName=\'{spnValue}\''.format(spnValue=spn)
+        spnQuery = 'SELECT pwdLastSetDate FROM spn WHERE servicePrincipalName=\'{spnValue}\''.format(spnValue=spn)
         spnResult = cursor.execute(spnQuery).fetchall()
 
         if len(spnResult) is 0:
-            logging.info("NEW SPN FOUND! Domain: "+domain+" SPN: "+spn)
-            cursor.execute("INSERT INTO spn (domain, servicePrincipalName, sAMAccountName, pwdLastSet) VALUES (?,?,?,?)", (domain, spn, samaccountname, pwdlastset))
+            logging.info("NEW SPN FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname)
+            cursor.execute("INSERT INTO spn (domain, servicePrincipalName, sAMAccountName, pwdLastSetDate) VALUES (?,?,?,?)", (domain, spn, samaccountname, pwdlastsetDate))
             results.append(spn)
             results.append(samaccountname)
         elif len(spnResult) is 1:
             if pwdlastset != spnResult[0][0]:
-                cursor.execute("UPDATE spn SET pwdLastSet=? WHERE servicePrincipalName=?",(pwdlastset, spn))
-                logging.info("CHANGED PW FOUND! Domain: "+domain+" SPN: "+spn+ " old pwdlastset value: "+spnResult[0][0]+ " new pwdlastset value: "+pwdlastset)
+                cursor.execute("UPDATE spn SET pwdLastSetDate=? WHERE servicePrincipalName=?",(pwdlastsetDate, spn))
+                logging.info("CHANGED PW FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname+" old pwdlastsetDate value: "+spnResult[0][0]+ " new pwdlastsetDate value: "+pwdlastsetDate)
                 results.append(spn)
                 results.append(samaccountname)
         else:
             logging.info("huh, more than 1 database match, something wrong here:")
-            logging.info("domain: "+domain+" spn: "+ spn + " samaccountname "+ samaccountname + " pwdlastset: " + pwdlastset)
+            logging.info("domain: "+domain+" spn: "+ spn + " samaccountname "+ samaccountname + " pwdlastsetDate: " + pwdlastsetDate)
             raise
 
         self.commit()
@@ -170,6 +172,11 @@ class GetUserSPNS:
                 target = self.__targetDomain
 
         logging.info("Connecting to LDAP")
+        logging.debug("To LDAP server: "+target)
+        logging.debug("With BaseDN: "+self.__baseDN)
+        logging.debug("To KDC host: "+str(self.__kdcHost))
+        logging.debug("With auth domain: "+self.__domain)
+        logging.debug("And auth user: "+self.__username)
         # Connect to LDAP
         try:
             ldapConnection = ldap.LDAPConnection('ldap://%s' % target, self.__baseDN, self.__kdcHost)
@@ -454,7 +461,7 @@ if __name__ == "__main__":
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
     if options.debug is True:
-        fh = logging.FileHandler('debug.log')
+        fh = logging.FileHandler('debug_' + datetime.now().strftime('%Y-%m-%d_%H-%M') + '.log')
         logging.getLogger().setLevel(logging.DEBUG)
         # Print the Library's installation path
         logging.debug(version.getInstallationPath())
@@ -464,7 +471,7 @@ if __name__ == "__main__":
 
     fh.setFormatter(formatter)
     logging.getLogger().addHandler(fh)
-
+    exit()
     authDomain, username, password = parse_credentials(options.credentials)
     db = Database(options.dbfile)
 
