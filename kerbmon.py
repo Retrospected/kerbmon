@@ -471,7 +471,7 @@ if __name__ == "__main__":
 
     fh.setFormatter(formatter)
     logging.getLogger().addHandler(fh)
-    exit()
+    
     authDomain, username, password = parse_credentials(options.credentials)
     db = Database(options.dbfile)
 
