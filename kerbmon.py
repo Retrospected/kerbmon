@@ -7,9 +7,10 @@
 #    This module will implement finding Service Principal Names in a continuous way. It will monitor multiple domains looking for recently changed passwords of the sAMAccount of the SPN's, or newly added SPN's to the domain.
 #
 # Credits:
-#     Tim Medin (@timmedin): For the research of the kerberoast attack detailed at: https://files.sans.org/summit/hackfest2014/PDFs/Kicking%20the%20Guard%20Dog%20of%20Hades%20-%20Attacking%20Microsoft%20Kerberos%20%20-%20Tim%20Medin(1).pdf
+#     Tim Medin (@timmedin): For the research of the kerberoast attack detailed at: http://www.irongeek.com/i.php?page=videos/derbycon4/t120-attacking-microsoft-kerberos-kicking-the-guard-dog-of-hades-tim-medin
 #     Alberto Solino (@agsolino): For building a kerberoast module based on the impacket framework. This script is heavily based on his work on GetUserSPNs.py
 #     @skelsec: For his initial https://github.com/skelsec/PyKerberoast project
+#     SecureAuthCorp: For their work on the [Impacket](https://github.com/SecureAuthCorp/impacket) project
 
 import argparse
 import sys
@@ -204,6 +205,7 @@ class GetUserSPNS:
             if e.getErrorString().find('sizeLimitExceeded') >= 0:
                 # We reached the sizeLimit, process the answers we have already and that's it. Until we implement
                 # paged queries
+                logging.info("LDAP sizeLimitExceeded")
                 resp = e.getAnswers()
                 pass
             else:
@@ -440,9 +442,9 @@ if __name__ == "__main__":
     parser.add_argument('-aesKey', action="store", metavar = "hex key", help='AES key to use for Kerberos Authentication '
                         '(128 or 256 bits)')
     parser.add_argument('-domainsfile', help='File with domains (FQDN) per line to test')
-    parser.add_argument('-dbfile', help='File to store state in sqlite3 db')
-    parser.add_argument('-crack', action='store', metavar = "wordlist", help='Automatically attempt to crack the TGS service ticket(s) using a dictionairy attack with the provided wordlist')
-    parser.add_argument('-outputfile', action='store', help='Output file to write new SPNs to. A date and timestamp will be appended to the filename.')
+    parser.add_argument('-dbfile', help='SQLite3 DB file to use as a database')
+    parser.add_argument('-crack', action='store', metavar = "wordlist", help='Automatically attempt to crack the TGS service ticket(s) using a dictionary attack with the provided wordlist (using John the Ripper)')
+    parser.add_argument('-outputfile', action='store', help='Output file to write new or changed SPNs to. A date and timestamp will be appended to the filename.')
     parser.add_argument('-debug', action='store_true', help='Turn DEBUG output ON')
 
     options = parser.parse_args()
@@ -471,7 +473,7 @@ if __name__ == "__main__":
 
     fh.setFormatter(formatter)
     logging.getLogger().addHandler(fh)
-    
+
     authDomain, username, password = parse_credentials(options.credentials)
     db = Database(options.dbfile)
 
@@ -498,8 +500,6 @@ if __name__ == "__main__":
 
         for targetDomain in domains:
             logging.info(" ** Starting enumerating domain: "+targetDomain)
-                # dict format:
-                # [[spn, sAMAccountName, memberOf, pwdLastSet, lastLogon, delegation],...]
             getUserSPNS = GetUserSPNS(username, password, authDomain, targetDomain, options)
             domainAnswers = getUserSPNS.harvester()
 
