@@ -1,6 +1,6 @@
 KerbMon
 =================
-KerbMon pulls the current state of the Service Principal Name (SPN) records of your your domain(s) and stores it in a SQLite3 database. In a subsequent execution, KerbMon will compare the newly retrieved SPN's with the records in the database and check for newly added SPN's or SPN's of which the sAMAccount has a changed password by comparing the pwdLastSet attribute in LDAP.
+KerbMon pulls the current state of the Service Principal Name (SPN) records of your domain(s) and stores it in a SQLite3 database. In a subsequent execution, KerbMon will compare the newly retrieved SPN's with the records in the database and check for newly added SPN's or SPN's of which the sAMAccount has a changed password by comparing the pwdLastSet attribute in LDAP.
 
 In case any difference has been detected, KerbMon will retrieve the Ticket Granting Service (TGS) ticket(s) (TGS-REQ) of these SPN's from the DC and store it to your disk.
 

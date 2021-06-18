@@ -76,17 +76,26 @@ class Database:
         results=[]
 
         cursor = self.cursor
-        spnQuery = 'SELECT pwdLastSetDate FROM spn WHERE servicePrincipalName=\'{spnValue}\''.format(spnValue=spn)
+        spnQuery = 'SELECT pwdLastSetDate FROM spn WHERE servicePrincipalName=\'{spnValue}\' AND samaccountname=\'{samAccountNameValue}\''.format(spnValue=spn, samAccountNameValue=samaccountname)
         spnResult = cursor.execute(spnQuery).fetchall()
 
         if len(spnResult) is 0:
             logging.info("NEW SPN FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname)
+
+            samQuery = 'SELECT * FROM spn WHERE samaccountname=\'{samAccountNameValue}\''.format(samAccountNameValue=samaccountname)
+            samResult = cursor.execute(samQuery).fetchall()
+            if len(samResult) is 0:
+                logging.info("SAMAccount did not have a SPN registered, so not going to pull the TGS.")
+                results.append(spn)
+                results.append(samaccountname)
+            else:
+                logging.info("SAMAccount already had a different SPN registered, so not going to pull the TGS.")
+
             cursor.execute("INSERT INTO spn (domain, servicePrincipalName, sAMAccountName, pwdLastSetDate) VALUES (?,?,?,?)", (domain, spn, samaccountname, pwdlastsetDate))
-            results.append(spn)
-            results.append(samaccountname)
+            logging.info("Added the SPN to the database.")
         elif len(spnResult) is 1:
-            if pwdlastset != spnResult[0][0]:
-                cursor.execute("UPDATE spn SET pwdLastSetDate=? WHERE servicePrincipalName=?",(pwdlastsetDate, spn))
+            if pwdlastsetDate != spnResult[0][0]:
+                cursor.execute("UPDATE spn SET pwdLastSetDate=? WHERE sAMAccountName=?",(pwdlastsetDate, samaccountname))
                 logging.info("CHANGED PW FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname+" old pwdlastsetDate value: "+spnResult[0][0]+ " new pwdlastsetDate value: "+pwdlastsetDate)
                 results.append(spn)
                 results.append(samaccountname)
@@ -172,7 +181,7 @@ class GetUserSPNS:
             else:
                 target = self.__targetDomain
 
-        logging.info("Connecting to LDAP")
+        logging.info("    ** Connecting to LDAP")
         logging.debug("To LDAP server: "+target)
         logging.debug("With BaseDN: "+self.__baseDN)
         logging.debug("To KDC host: "+str(self.__kdcHost))
@@ -195,7 +204,7 @@ class GetUserSPNS:
                            "(!(UserAccountControl:1.2.840.113556.1.4.803:=2))(!(objectCategory=computer)))"
 
 
-        logging.info("Searching LDAP for SPNs")
+        logging.info("    ** Searching LDAP for SPNs")
         try:
             resp = ldapConnection.search(searchFilter=searchFilter,
                                          attributes=['servicePrincipalName', 'sAMAccountName',
@@ -471,6 +480,9 @@ if __name__ == "__main__":
         fh = logging.FileHandler('info.log')
         logging.getLogger().setLevel(logging.INFO)
 
+        handler = logging.StreamHandler(sys.stdout)
+        logging.getLogger().addHandler(handler)
+
     fh.setFormatter(formatter)
     logging.getLogger().addHandler(fh)
 
@@ -505,18 +517,18 @@ if __name__ == "__main__":
 
             tgsList = []
             for spn in domainAnswers:
-                logging.info("Found SPN: "+spn[0])
+                logging.debug("Found SPN: "+spn[0])
                 newSpn = db.find_spn(targetDomain, spn[0], spn[1], spn[3])
                 if newSpn:
                     tgsList.append(newSpn)
 
             if len(tgsList)>0:
                 getUserSPNS.getTGS(tgsList)
+                logging.info("    ** Results written to: "+options.outputfile)
             else:
-                logging.info("No new or changed SPNs found!")
+                logging.info("    ** No new or changed SPNs found for domain: "+targetDomain)
 
             logging.info(" ** Finished enumerating domain: "+targetDomain)
-            logging.info(" ** Results written to: "+options.outputfile)
 
         if options.crack is not None:
             print("Starting to crack using wordlist: "+options.crack)
