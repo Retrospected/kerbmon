@@ -80,28 +80,28 @@ class Database:
         spnResult = cursor.execute(spnQuery).fetchall()
 
         if len(spnResult) is 0:
-            logging.info("NEW SPN FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname)
+            logging.info("        ** NEW SPN FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname)
 
             samQuery = 'SELECT * FROM spn WHERE samaccountname=\'{samAccountNameValue}\''.format(samAccountNameValue=samaccountname)
             samResult = cursor.execute(samQuery).fetchall()
             if len(samResult) is 0:
-                logging.info("SAMAccount did not have a SPN registered, so not going to pull the TGS.")
+                logging.info("        ** SAMAccount did not have a SPN registered yet, so going to pull the TGS.")
                 results.append(spn)
                 results.append(samaccountname)
             else:
-                logging.info("SAMAccount already had a different SPN registered, so not going to pull the TGS.")
+                logging.info("        ** SAMAccount already had a SPN registered, so not going to pull the TGS.")
 
+            logging.info("        ** Adding the SPN to the database.")
             cursor.execute("INSERT INTO spn (domain, servicePrincipalName, sAMAccountName, pwdLastSetDate) VALUES (?,?,?,?)", (domain, spn, samaccountname, pwdlastsetDate))
-            logging.info("Added the SPN to the database.")
         elif len(spnResult) is 1:
             if pwdlastsetDate != spnResult[0][0]:
+                logging.info("        ** CHANGED PW FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname+" old pwdlastsetDate value: "+spnResult[0][0]+ " new pwdlastsetDate value: "+pwdlastsetDate)
                 cursor.execute("UPDATE spn SET pwdLastSetDate=? WHERE sAMAccountName=?",(pwdlastsetDate, samaccountname))
-                logging.info("CHANGED PW FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname+" old pwdlastsetDate value: "+spnResult[0][0]+ " new pwdlastsetDate value: "+pwdlastsetDate)
                 results.append(spn)
                 results.append(samaccountname)
         else:
-            logging.info("huh, more than 1 database match, something wrong here:")
-            logging.info("domain: "+domain+" spn: "+ spn + " samaccountname "+ samaccountname + " pwdlastsetDate: " + pwdlastsetDate)
+            logging.info("        ** huh, more than 1 database match, something wrong here:")
+            logging.info("        ** domain: "+domain+" spn: "+ spn + " samaccountname "+ samaccountname + " pwdlastsetDate: " + pwdlastsetDate)
             raise
 
         self.commit()
