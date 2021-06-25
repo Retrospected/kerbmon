@@ -46,8 +46,9 @@ optional arguments:
                         ticket(s) using a dictionary attack with the provided
                         wordlist (using John the Ripper)
   -outputfile OUTPUTFILE
-                        Output file to write new or changed SPNs to. A date and timestamp
-                        will be appended to the filename.
+                        Output file to write new or changed SPNs to. A date and
+                        timestamp will be appended to the filename as well as
+                        the encryption type ID of the TGS (23=rc4, 18=aes256, etc).
   -debug                Turn DEBUG output ON
 ```
 
