@@ -513,9 +513,10 @@ if __name__ == "__main__":
         logger.info("With username: "+username)
         logger.info("Loading domains from file: "+options.domainsfile)
         logger.info("Storing state in: "+options.dbfile)
-        options.outputfile = options.outputfile + "_" + datetime.now().strftime('%Y-%m-%d_%H-%M')
 
-        logger.info("Outputting results in: "+options.outputfile)
+        if options.outputfile is not None:
+            options.outputfile = options.outputfile + "_" + datetime.now().strftime('%Y-%m-%d_%H-%M')
+            logger.info("Outputting results in: "+options.outputfile)
 
         if not os.path.exists(options.dbfile):
             logger.info("*** DATABASE NOT FOUND")
