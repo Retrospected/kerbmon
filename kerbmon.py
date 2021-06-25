@@ -205,74 +205,72 @@ class GetUserSPNS:
 
 
         logger.info("    ** Searching LDAP for SPNs")
+        self.answers = []
+
         try:
+            sc = ldap.SimplePagedResultsControl(size=1000)
             resp = ldapConnection.search(searchFilter=searchFilter,
                                          attributes=['servicePrincipalName', 'sAMAccountName',
                                                      'pwdLastSet', 'MemberOf', 'userAccountControl', 'lastLogon'],
-                                         sizeLimit=100000)
+                                                     sizeLimit=0, searchControls = [sc], perRecordCallback=self.processRecord)
         except ldap.LDAPSearchError as e:
+            print(e.getErrorString())
             if e.getErrorString().find('sizeLimitExceeded') >= 0:
-                # We reached the sizeLimit, process the answers we have already and that's it. Until we implement
-                # paged queries
-                logger.info("LDAP sizeLimitExceeded")
-                resp = e.getAnswers()
+                logging.debug('sizeLimitExceeded exception caught, giving up and processing the data received')
                 pass
             else:
                 raise
 
-        answers = []
+        return self.answers
 
+    def processRecord(self, item):
+        if isinstance(item, ldapasn1.SearchResultEntry) is not True:
+            return
 
-        for item in resp:
-            if isinstance(item, ldapasn1.SearchResultEntry) is not True:
-                continue
-
-            mustCommit = False
-            sAMAccountName =  ''
-            memberOf = ''
-            SPNs = []
-            pwdLastSet = ''
-            userAccountControl = 0
-            lastLogon = 'N/A'
-            delegation = ''
-            try:
-                for attribute in item['attributes']:
-                    if str(attribute['type']) == 'sAMAccountName':
-                        sAMAccountName = str(attribute['vals'][0])
-                        mustCommit = True
-                    elif str(attribute['type']) == 'userAccountControl':
-                        userAccountControl = str(attribute['vals'][0])
-                        if int(userAccountControl) & UF_TRUSTED_FOR_DELEGATION:
-                            delegation = 'unconstrained'
-                        elif int(userAccountControl) & UF_TRUSTED_TO_AUTHENTICATE_FOR_DELEGATION:
-                            delegation = 'constrained'
-                    elif str(attribute['type']) == 'memberOf':
-                        memberOf = str(attribute['vals'][0])
-                    elif str(attribute['type']) == 'pwdLastSet':
-                        if str(attribute['vals'][0]) == '0':
-                            pwdLastSet = '<never>'
-                        else:
-                            pwdLastSet = str(datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))))
-                    elif str(attribute['type']) == 'lastLogon':
-                        if str(attribute['vals'][0]) == '0':
-                            lastLogon = '<never>'
-                        else:
-                            lastLogon = str(datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))))
-                    elif str(attribute['type']) == 'servicePrincipalName':
-                        for spn in attribute['vals']:
-                            SPNs.append(str(spn))
-
-                if mustCommit is True:
-                    if int(userAccountControl) & UF_ACCOUNTDISABLE:
-                        pass
+        mustCommit = False
+        sAMAccountName =  ''
+        memberOf = ''
+        SPNs = []
+        pwdLastSet = ''
+        userAccountControl = 0
+        lastLogon = 'N/A'
+        delegation = ''
+        try:
+            for attribute in item['attributes']:
+                if str(attribute['type']) == 'sAMAccountName':
+                    sAMAccountName = str(attribute['vals'][0])
+                    mustCommit = True
+                elif str(attribute['type']) == 'userAccountControl':
+                    userAccountControl = str(attribute['vals'][0])
+                    if int(userAccountControl) & UF_TRUSTED_FOR_DELEGATION:
+                        delegation = 'unconstrained'
+                    elif int(userAccountControl) & UF_TRUSTED_TO_AUTHENTICATE_FOR_DELEGATION:
+                        delegation = 'constrained'
+                elif str(attribute['type']) == 'memberOf':
+                    memberOf = str(attribute['vals'][0])
+                elif str(attribute['type']) == 'pwdLastSet':
+                    if str(attribute['vals'][0]) == '0':
+                        pwdLastSet = '<never>'
                     else:
-                        for spn in SPNs:
-                            answers.append([spn, sAMAccountName, memberOf, pwdLastSet, lastLogon, delegation])
-            except Exception as e:
-                logger.info('Skipping item, cannot process due to error %s' % str(e))
-                pass
+                        pwdLastSet = str(datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))))
+                elif str(attribute['type']) == 'lastLogon':
+                    if str(attribute['vals'][0]) == '0':
+                        lastLogon = '<never>'
+                    else:
+                        lastLogon = str(datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))))
+                elif str(attribute['type']) == 'servicePrincipalName':
+                    for spn in attribute['vals']:
+                        SPNs.append(str(spn))
 
-        return answers
+            if mustCommit is True:
+                if int(userAccountControl) & UF_ACCOUNTDISABLE:
+                    pass
+                else:
+                    for spn in SPNs:
+                        self.answers.append([spn, sAMAccountName, memberOf, pwdLastSet, lastLogon, delegation])
+        except Exception as e:
+            logger.info('Skipping item, cannot process due to error %s' % str(e))
+            pass
 
 
     def getTGT(self):
@@ -484,8 +482,6 @@ if __name__ == "__main__":
 
     formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
-
-
     infoHandler = logging.FileHandler('info.log')
     infoHandler.setLevel(logging.INFO)
     infoHandler.setFormatter(formatter)
@@ -543,7 +539,8 @@ if __name__ == "__main__":
 
             if len(tgsList)>0:
                 getUserSPNS.getTGS(tgsList)
-                logger.info("    ** Results written to: "+options.outputfile+".XX.krb5tgs, where XX is the encryption type id of the ticket.")
+                if options.outputfile is not None:
+                    logger.info("    ** Results written to: "+options.outputfile+".XX.krb5tgs, where XX is the encryption type id of the ticket.")
             else:
                 logger.info("    ** No new or changed SPNs found for domain: "+targetDomain)
 
