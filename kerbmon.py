@@ -76,13 +76,13 @@ class Database:
         results=[]
 
         cursor = self.cursor
-        spnQuery = 'SELECT pwdLastSetDate FROM spn WHERE servicePrincipalName=\'{spnValue}\' AND samaccountname=\'{samAccountNameValue}\''.format(spnValue=spn, samAccountNameValue=samaccountname)
+        spnQuery = 'SELECT pwdLastSetDate FROM spn WHERE servicePrincipalName=\'{spnValue}\' AND samaccountname=\'{samAccountNameValue}\' AND domain=\'{domainValue}\''.format(spnValue=spn, samAccountNameValue=samaccountname, domainValue=domain)
         spnResult = cursor.execute(spnQuery).fetchall()
 
         if len(spnResult) is 0:
             logger.info("        ** NEW SPN FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname)
 
-            samQuery = 'SELECT * FROM spn WHERE samaccountname=\'{samAccountNameValue}\''.format(samAccountNameValue=samaccountname)
+            samQuery = 'SELECT * FROM spn WHERE samaccountname=\'{samAccountNameValue}\' AND domain=\'{domainValue}\''.format(samAccountNameValue=samaccountname, domainValue=domain)
             samResult = cursor.execute(samQuery).fetchall()
             if len(samResult) is 0:
                 logger.info("        ** SAMAccount did not have a SPN registered yet, so going to pull the TGS.")
