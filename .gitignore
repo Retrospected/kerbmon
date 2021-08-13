@@ -1,6 +1,7 @@
 *.db
 *.log
 *.krb5tgs
+*.krb5asrep
 __pycache__/*
 old/*
 dict/*
