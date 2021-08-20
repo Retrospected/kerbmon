@@ -59,6 +59,6 @@ optional arguments:
 Credits
 ==========
 - Tim Medin (@timmedin): For [his research](http://www.irongeek.com/i.php?page=videos/derbycon4/t120-attacking-microsoft-kerberos-kicking-the-guard-dog-of-hades-tim-medin) of the kerberoast attack
-- Alberto Solino (@agsolino): For building a kerberoast module based on the Impacket framework. This script is heavily based on his work on GetUserSPNs
+- Alberto Solino (@agsolino): For building a kerberoast module based on the Impacket framework. This script is heavily based on his work on GetUserSPNs and GetNPUsers
 - @skelsec: For his initial https://github.com/skelsec/PyKerberoast project
 - SecureAuthCorp: For their work on the [Impacket](https://github.com/SecureAuthCorp/impacket) project
