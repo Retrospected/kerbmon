@@ -2,15 +2,7 @@
 #
 # Author:
 #  @__Retrospect
-#
-# Description:
-#    This module will implement finding Service Principal Names in a continuous way. It will monitor multiple domains looking for recently changed passwords of the sAMAccount of the SPN's, or newly added SPN's to the domain.
-#
-# Credits:
-#     Tim Medin (@timmedin): For the research of the kerberoast attack detailed at: http://www.irongeek.com/i.php?page=videos/derbycon4/t120-attacking-microsoft-kerberos-kicking-the-guard-dog-of-hades-tim-medin
-#     Alberto Solino (@agsolino): For building a kerberoast module based on the impacket framework. This script is heavily based on his work on GetUserSPNs.py
-#     @skelsec: For his initial https://github.com/skelsec/PyKerberoast project
-#     SecureAuthCorp: For their work on the [Impacket](https://github.com/SecureAuthCorp/impacket) project
+#  https://github.com/Retrospected/kerbmon/
 
 import argparse
 import sys
@@ -676,7 +668,7 @@ if __name__ == "__main__":
                         '(128 or 256 bits)')
     parser.add_argument('-domainsfile', help='File with domains (FQDN) per line to test')
     parser.add_argument('-dbfile', help='SQLite3 DB file to use as a database')
-    parser.add_argument('-crack', action='store', metavar = "wordlist", help='Automatically attempt to crack the TGS service ticket(s) using a dictionary attack with the provided wordlist (using John the Ripper)')
+    parser.add_argument('-crack', action='store', metavar = "wordlist", help='Automatically attempt to crack the TGS service ticket(s) using a dictionary attack with the provided wordlist (using Hashcat)')
     parser.add_argument('-outputfile', action='store', help='Output file to write new or changed SPNs to. A date and timestamp will be appended to the filename as well as the encryption type ID of the TGS (23=rc4, 18=aes256, etc).')
     parser.add_argument('-debug', action='store_true', help='Turn DEBUG output ON')
 
