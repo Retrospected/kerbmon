@@ -406,17 +406,12 @@ class Roaster:
             else:
                 raise
 
-        # Building the search filter
-        #searchFilter = "(&(servicePrincipalName=*)(UserAccountControl:1.2.840.113556.1.4.803:=512)" \
-        #                   "(!(UserAccountControl:1.2.840.113556.1.4.803:=2))(!(objectCategory=computer)))"
-
         filter_person = "objectCategory=person"
         filter_not_disabled = "!(userAccountControl:1.2.840.113556.1.4.803:=2)"
 
         searchFilter = "(&"
         searchFilter += "(" + filter_person + ")"
         searchFilter += "(" + filter_not_disabled + "))"
-
 
         logger.info("    ** Searching LDAP for SPNs")
         self.answersSPNs = []
