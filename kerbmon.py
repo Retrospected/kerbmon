@@ -613,7 +613,7 @@ class Roaster:
             entry = '$krb5tgs$%d$%s$%s$*%s*$%s$%s' % (
                 constants.EncryptionTypes.aes128_cts_hmac_sha1_96.value, username, decodedTGS['ticket']['realm'], spn.replace(':', '~'),
                 hexlify(decodedTGS['ticket']['enc-part']['cipher'][-12:].asOctets()).decode(),
-                hexlify(decodedTGS['ticket']['enc-part']['cipher'][:-12:].asOctets()).decode)
+                hexlify(decodedTGS['ticket']['enc-part']['cipher'][:-12:].asOctets()).decode())
             if fd is None:
                 logger.info(entry)
             else:
