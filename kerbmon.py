@@ -661,18 +661,18 @@ if __name__ == "__main__":
     #required args: db file, creds, target-domain file, outputfile
 
     parser = argparse.ArgumentParser(add_help =  True, description = "Query domains for SPNs that are configured and for users that have the property 'Do not require Kerberos preauthentication' set (UF_DONT_REQUIRE_PREAUTH). Monitor for changes and pull latest TGT or TGS tickets.")
-    parser.add_argument('-credentials', action='store', help='domain/username[:password]')
+    parser.add_argument('-credentials', action='store', help='[required] domain/username[:password]', required=True)
     parser.add_argument('-k', action="store_true", help='Use Kerberos authentication. Grabs credentials from ccache file '
                                                    '(KRB5CCNAME) based on target parameters. If valid credentials '
                                                    'cannot be found, it will use the ones specified in the command '
                                                    'line')
     parser.add_argument('-aesKey', action="store", metavar = "hex key", help='AES key to use for Kerberos Authentication '
                         '(128 or 256 bits)')
-    parser.add_argument('-domainsfile', help='File with domains (FQDN) per line to test')
-    parser.add_argument('-dbfile', help='SQLite3 DB file to use as a database')
+    parser.add_argument('-domainsfile', help='[required] File with domains (FQDN) per line to test', required=True)
+    parser.add_argument('-dbfile', help='[required] SQLite3 DB file to use as a database', required=True)
     parser.add_argument('-crack', action='store', metavar = "wordlist", help='Automatically attempt to crack the TGS service ticket(s) using a dictionary attack with the provided wordlist (using Hashcat)')
     parser.add_argument('-outputfile', action='store', help='Output file to write new or changed SPNs to. A date and timestamp will be appended to the filename as well as the encryption type ID of the TGS (23=rc4, 18=aes256, etc).')
-    parser.add_argument('-debug', action='store_true', help='Turn DEBUG output ON')
+    parser.add_argument('-debug', action='store_false', help='Turn DEBUG output ON')
 
     options = parser.parse_args()
 
