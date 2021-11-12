@@ -672,7 +672,7 @@ if __name__ == "__main__":
     parser.add_argument('-dbfile', help='[required] SQLite3 DB file to use as a database', required=True)
     parser.add_argument('-crack', action='store', metavar = "wordlist", help='Automatically attempt to crack the TGS service ticket(s) using a dictionary attack with the provided wordlist (using Hashcat)')
     parser.add_argument('-outputfile', action='store', help='Output file to write new or changed SPNs to. A date and timestamp will be appended to the filename as well as the encryption type ID of the TGS (23=rc4, 18=aes256, etc).')
-    parser.add_argument('-debug', action='store_false', help='Turn DEBUG output ON')
+    parser.add_argument('-debug', action='store_true', help='Turn DEBUG output ON')
 
     options = parser.parse_args()
 
