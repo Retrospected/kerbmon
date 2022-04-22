@@ -80,8 +80,8 @@ class Database:
         npFound = True
 
         cursor = self.cursor
-        npQuery = 'SELECT pwdLastSetDate FROM np WHERE samaccountname=\'{samAccountNameValue}\' AND domain=\'{domainValue}\''.format(samAccountNameValue=samaccountname, domainValue=domain)
-        npResult = cursor.execute(npQuery).fetchall()
+        npQuery = """SELECT pwdLastSetDate FROM np WHERE samaccountname = ? AND domain = ?"""
+        npResult = cursor.execute(npQuery, (samaccountname, domain, )).fetchall()
 
         if len(npResult) is 0:
             logger.info("        ** NEW NP FOUND! Domain: "+domain+" sAMAccountName: "+samaccountname+", pulling the TGT.")
@@ -107,14 +107,14 @@ class Database:
         results=[]
 
         cursor = self.cursor
-        spnQuery = 'SELECT pwdLastSetDate FROM spn WHERE servicePrincipalName=\'{spnValue}\' AND samaccountname=\'{samAccountNameValue}\' AND domain=\'{domainValue}\''.format(spnValue=spn, samAccountNameValue=samaccountname, domainValue=domain)
-        spnResult = cursor.execute(spnQuery).fetchall()
+        spnQuery = """SELECT pwdLastSetDate FROM spn WHERE servicePrincipalName = ? AND samaccountname = ? AND domain = ?"""
+        spnResult = cursor.execute(spnQuery, (spn,samaccountname,domain,)).fetchall()
 
         if len(spnResult) is 0:
             logger.info("        ** NEW SPN FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname)
 
-            samQuery = 'SELECT * FROM spn WHERE samaccountname=\'{samAccountNameValue}\' AND domain=\'{domainValue}\''.format(samAccountNameValue=samaccountname, domainValue=domain)
-            samResult = cursor.execute(samQuery).fetchall()
+            samQuery = """SELECT * FROM spn WHERE samaccountname= ? AND domain= ?"""
+            samResult = cursor.execute(samQuery, (samaccountname, domain, )).fetchall()
             if len(samResult) is 0:
                 logger.info("        ** SAMAccount did not have a SPN registered yet, so going to pull the TGS.")
                 results.append(spn)
@@ -292,6 +292,13 @@ class Roaster:
                 target = self.__kdcHost
             else:
                 target = self.__targetDomain
+
+        logger.info("    ** Connecting to LDAP")
+        logger.debug("To LDAP server: "+target)
+        logger.debug("With BaseDN: "+self.__baseDN)
+        logger.debug("To KDC host: "+str(self.__kdcHost))
+        logger.debug("With auth domain: "+self.__domain)
+        logger.debug("And auth user: "+self.__username)
 
         # Connect to LDAP
         try:
