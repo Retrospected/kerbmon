@@ -83,12 +83,12 @@ class Database:
         npQuery = """SELECT pwdLastSetDate FROM np WHERE samaccountname = ? AND domain = ?"""
         npResult = cursor.execute(npQuery, (samaccountname, domain, )).fetchall()
 
-        if len(npResult) is 0:
+        if len(npResult) == 0:
             logger.info("        ** NEW NP FOUND! Domain: "+domain+" sAMAccountName: "+samaccountname+", pulling the TGT.")
             npFound=False
             logger.info("        ** Adding the NP to the database.")
             cursor.execute("INSERT INTO np (domain, sAMAccountName, pwdLastSetDate) VALUES (?,?,?)", (domain, samaccountname, pwdlastsetDate))
-        elif len(npResult) is 1:
+        elif len(npResult) == 1:
             if pwdlastsetDate != npResult[0][0]:
                 logger.info("        ** CHANGED PW FOUND! Domain: "+domain+" sAMAccountName: "+samaccountname+" old pwdlastsetDate value: "+npResult[0][0]+ " new pwdlastsetDate value: "+pwdlastsetDate)
                 cursor.execute("UPDATE np SET pwdLastSetDate=? WHERE sAMAccountName=?",(pwdlastsetDate, samaccountname))
@@ -110,12 +110,12 @@ class Database:
         spnQuery = """SELECT pwdLastSetDate FROM spn WHERE servicePrincipalName = ? AND samaccountname = ? AND domain = ?"""
         spnResult = cursor.execute(spnQuery, (spn,samaccountname,domain,)).fetchall()
 
-        if len(spnResult) is 0:
+        if len(spnResult) == 0:
             logger.info("        ** NEW SPN FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname)
 
             samQuery = """SELECT * FROM spn WHERE samaccountname= ? AND domain= ?"""
             samResult = cursor.execute(samQuery, (samaccountname, domain, )).fetchall()
-            if len(samResult) is 0:
+            if len(samResult) == 0:
                 logger.info("        ** SAMAccount did not have a SPN registered yet, so going to pull the TGS.")
                 results.append(spn)
                 results.append(samaccountname)
@@ -124,7 +124,7 @@ class Database:
 
             logger.info("        ** Adding the SPN to the database.")
             cursor.execute("INSERT INTO spn (domain, servicePrincipalName, sAMAccountName, pwdLastSetDate) VALUES (?,?,?,?)", (domain, spn, samaccountname, pwdlastsetDate))
-        elif len(spnResult) is 1:
+        elif len(spnResult) == 1:
             if pwdlastsetDate != spnResult[0][0]:
                 logger.info("        ** CHANGED PW FOUND! Domain: "+domain+" SPN: "+spn+" sAMAccountName: "+samaccountname+" old pwdlastsetDate value: "+spnResult[0][0]+ " new pwdlastsetDate value: "+pwdlastsetDate)
                 cursor.execute("UPDATE spn SET pwdLastSetDate=? WHERE sAMAccountName=?",(pwdlastsetDate, samaccountname))
@@ -496,20 +496,22 @@ class Roaster:
             # No cache present
             pass
         else:
-            # retrieve user and domain information from CCache file if needed
-            if self.__domain == '':
-                domain = ccache.principal.realm['data']
-            else:
-                domain = self.__domain
-            logger.debug("Using Kerberos Cache: %s" % os.getenv('KRB5CCNAME'))
-            principal = 'krbtgt/%s@%s' % (domain.upper(), domain.upper())
-            creds = ccache.getCredential(principal)
-            if creds is not None:
-                TGT = creds.toTGT()
-                logger.debug('Using TGT from cache')
-                return TGT
-            else:
-                logger.debug("No valid credentials found in cache. ")
+
+            if ccache is not None:
+                # retrieve user and domain information from CCache file if needed
+                if self.__domain == '':
+                    domain = ccache.principal.realm['data']
+                else:
+                    domain = self.__domain
+                logger.debug("Using Kerberos Cache: %s" % os.getenv('KRB5CCNAME'))
+                principal = 'krbtgt/%s@%s' % (domain.upper(), domain.upper())
+                creds = ccache.getCredential(principal)
+                if creds is not None:
+                    TGT = creds.toTGT()
+                    logger.debug('Using TGT from cache')
+                    return TGT
+                else:
+                    logger.debug("No valid credentials found in cache. ")
 
         # No TGT in cache, request it
         userName = Principal(self.__username, type=constants.PrincipalNameType.NT_PRINCIPAL.value)

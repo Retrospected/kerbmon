@@ -1,4 +1,4 @@
-*.db
+*.db*
 *.log
 *.krb5tgs
 *.krb5asrep
