@@ -56,6 +56,17 @@ optional arguments:
   -debug                Turn DEBUG output ON
 ```
 
+Docker
+---------------
+
+You can also run the tool within a Docker container. Mount a writeable folder to /data that includes the target domains file, db file and outputfile location.
+
+```
+docker build . -t kerbmon
+docker run -v /opt/kerbmon/data:/data --rm kerbmon -domainsfile /data/domains.txt -dbfile /data/domains.db -credentials $credentials -outputfile /data/results
+```
+
+
 Credits
 ==========
 - Tim Medin (@timmedin): For [his research](http://www.irongeek.com/i.php?page=videos/derbycon4/t120-attacking-microsoft-kerberos-kicking-the-guard-dog-of-hades-tim-medin) of the kerberoast attack

@@ -5,3 +5,5 @@
 __pycache__/*
 old/*
 dict/*
+data/*
+*.txt

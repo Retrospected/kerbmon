@@ -692,10 +692,6 @@ if __name__ == "__main__":
     if options.aesKey is not None:
         options.k = True
 
-    if options.crack is not None and options.outputfile is None:
-        logger.info("Cannot use the crack option without outputting the results to files using the -outputfile option")
-        exit()
-
     # enforcing default arguments
     options.dc_ip = None
     options.usersfile = None
@@ -706,12 +702,11 @@ if __name__ == "__main__":
 
     logger = logging.getLogger('logger')
 
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    if options.crack is not None and options.outputfile is None:
+        logger.info("Cannot use the crack option without outputting the results to files using the -outputfile option")
+        exit()
 
-    infoHandler = logging.FileHandler('info.log')
-    infoHandler.setLevel(logging.INFO)
-    infoHandler.setFormatter(formatter)
-    logging.getLogger().addHandler(infoHandler)
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 
     stdoutHandler = logging.StreamHandler(sys.stdout)
     logging.getLogger().addHandler(stdoutHandler)
