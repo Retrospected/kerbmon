@@ -309,8 +309,14 @@ class Roaster:
                 # We need to try SSL
                 ldapConnection = ldap.LDAPConnection('ldaps://%s' % target, self.__baseDN, self.__kdcHost)
                 ldapConnection.login(self.__username, self.__password, self.__domain)
+            elif str(e).find('invalidCredentials') >= 0:
+                logger.info("   ** Invalid credentials to connect to LDAP")
+                return []
             else:
                 raise
+        except:
+            logger.info("   ** Unable to connect to LDAP")
+            return []
 
 
         # Building the search filter
@@ -410,8 +416,14 @@ class Roaster:
                 # We need to try SSL
                 ldapConnection = ldap.LDAPConnection('ldaps://%s' % target, self.__baseDN, self.__kdcHost)
                 ldapConnection.login(self.__username, self.__password, self.__domain)
+            elif str(e).find('invalidCredentials') >= 0:
+                logger.info("   ** Invalid credentials to connect to LDAP")
+                return []
             else:
                 raise
+        except:
+            logger.info("   ** Unable to connect to LDAP")
+            return []
 
         filter_person = "objectCategory=person"
         filter_not_disabled = "!(userAccountControl:1.2.840.113556.1.4.803:=2)"
